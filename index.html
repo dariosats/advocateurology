@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -1171,7 +1170,6 @@ img { max-width: 100%; display: block; }
   <div class="navbar-links">
     <a href="https://advocateurology.com">Home</a>
     <a href="#" class="active">Job Board</a>
-    <a href="https://advocateurology.com/faqs">FAQs</a>
     <a href="mailto:advocateurology@pm.me" class="btn-nav">List a Position</a>
   </div>
   <button class="mobile-toggle" onclick="document.querySelector('.navbar-links').classList.toggle('show')" aria-label="Menu">
@@ -1580,7 +1578,7 @@ img { max-width: 100%; display: block; }
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 2 11 13M22 2l-7 20-4-9-9-4 20-7z"/></svg>
             Submit for Review
           </button>
-          <div class="form-footer">Submissions are reviewed within 48 hours. We'll email you when your listing goes live.</div>
+          <div class="form-footer">Listings are published automatically. We may follow up by email for verification.</div>
         </form>
       </div>
     </div>
@@ -1597,8 +1595,8 @@ img { max-width: 100%; display: block; }
         <div class="success-icon">
           <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#2a9d8f" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
         </div>
-        <h3>Submission Received!</h3>
-        <p>Thank you for helping urologists find their next opportunity. We'll review your listing and email you within 48 hours once it's live on the board.</p>
+        <h3>Listing Submitted!</h3>
+        <p>Your listing has been submitted and will appear on the board shortly. Thank you for helping urologists find their next opportunity.</p>
       </div>
     </div>
   </div>
@@ -1614,7 +1612,6 @@ img { max-width: 100%; display: block; }
     <div class="footer-links">
       <a href="https://advocateurology.com">Main Site</a>
       <a href="mailto:advocateurology@pm.me">Contact</a>
-      <a href="https://advocateurology.com/faqs">FAQs</a>
     </div>
   </div>
 </footer>
@@ -1623,7 +1620,12 @@ img { max-width: 100%; display: block; }
 // ========== GOOGLE SHEETS CONFIG ==========
 // INSTRUCTIONS: Replace this URL with your published Google Sheet CSV URL
 // (File → Share → Publish to web → Listings sheet → CSV → Publish → copy URL)
-const SHEET_CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vRjp76TNV8CWx96eJoEI26Z4pczIAY34-ThAH2Tl1OxSvbaHF0joB9ot2KtmDiTHw/pub?gid=1334797650&single=true&output=csv";
+const SHEET_CSV_URL = "YOUR_GOOGLE_SHEET_CSV_URL_HERE";
+
+// ========== APPS SCRIPT CONFIG ==========
+// INSTRUCTIONS: Replace this URL with your deployed Google Apps Script Web App URL
+// (See setup guide — Deploy > New deployment > Web app > copy URL)
+const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbys5OxgqaiXeZR6hBWB6-MTrwV8fuFo6_ddEFQ-gbb3FckHhSL8sS4WNx-JCaEb-sY/exec";
 
 // ========== CSV PARSER ==========
 function parseCSV(text) {
@@ -2414,10 +2416,15 @@ function handleSubmit(e) {
   e.preventDefault();
   const form = e.target;
   const data = new FormData(form);
+  const btn = document.getElementById('btnSubmitForm');
 
   // Collect scope checkboxes
   const scopes = [];
   form.querySelectorAll('input[name="scope"]:checked').forEach(cb => scopes.push(cb.value));
+
+  // Collect benefits multi-select
+  const benefits = [];
+  form.querySelectorAll('select[name="benefits"] option:checked').forEach(opt => benefits.push(opt.value));
 
   // Build the submission object
   const submission = {
@@ -2431,25 +2438,50 @@ function handleSubmit(e) {
     duration: data.get('duration'),
     startDate: data.get('startDate'),
     scope: scopes,
+    benefits: benefits,
     pay: data.get('pay'),
     details: data.get('details'),
     applyUrl: data.get('applyUrl'),
     submittedAt: new Date().toISOString()
   };
 
-  // For now, construct a mailto link with the submission data
-  // (This can later be replaced with a real API endpoint)
+  // Disable button while submitting
+  btn.disabled = true;
+  btn.innerHTML = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/></svg> Submitting...';
+
+  // POST directly to Google Apps Script → writes to your Sheet automatically
+  if (APPS_SCRIPT_URL && APPS_SCRIPT_URL !== 'YOUR_APPS_SCRIPT_WEB_APP_URL_HERE') {
+    fetch(APPS_SCRIPT_URL, {
+      method: 'POST',
+      mode: 'no-cors',
+      headers: { 'Content-Type': 'text/plain' },
+      body: JSON.stringify(submission)
+    }).then(() => {
+      showSubmissionSuccess();
+    }).catch(() => {
+      // If Apps Script fails, fall back to mailto
+      fallbackToMailto(submission, scopes);
+      showSubmissionSuccess();
+    });
+  } else {
+    // Apps Script URL not configured yet — use mailto fallback
+    fallbackToMailto(submission, scopes);
+    showSubmissionSuccess();
+  }
+}
+
+function fallbackToMailto(submission, scopes) {
   const subject = encodeURIComponent(
-    `[${currentSubmitterType === 'agency' ? 'Agency' : 'Facility'}] New Listing Submission: ${submission.title} - ${submission.location}`
+    `[${submission.type === 'agency' ? 'Agency' : 'Facility'}] New Listing: ${submission.title} - ${submission.location}`
   );
   const body = encodeURIComponent(
     `NEW LISTING SUBMISSION\n` +
     `${'='.repeat(40)}\n\n` +
-    `Submitter Type: ${currentSubmitterType === 'agency' ? 'Agency / Recruiter' : 'Hospital / Facility'}\n` +
+    `Type: ${submission.type === 'agency' ? 'Agency / Recruiter' : 'Hospital / Facility'}\n` +
     `Contact: ${submission.contactName}\n` +
     `Email: ${submission.contactEmail}\n` +
     `Organization: ${submission.orgName}\n` +
-    `Phone: ${submission.phone || 'Not provided'}\n\n` +
+    `Phone: ${submission.phone || 'N/A'}\n\n` +
     `POSITION DETAILS\n` +
     `${'-'.repeat(40)}\n` +
     `Title: ${submission.title}\n` +
@@ -2457,16 +2489,15 @@ function handleSubmit(e) {
     `Duration: ${submission.duration || 'Not specified'}\n` +
     `Start Date: ${submission.startDate || 'Not specified'}\n` +
     `Scope: ${scopes.length ? scopes.join(', ') : 'Not specified'}\n` +
-    `Compensation: ${submission.pay || 'NOT DISCLOSED'}\n` +
+    `Pay: ${submission.pay || 'NOT DISCLOSED'}\n` +
     `Apply URL: ${submission.applyUrl || 'None'}\n\n` +
-    `Additional Details:\n${submission.details || 'None provided'}\n\n` +
+    `Details:\n${submission.details || 'None'}\n\n` +
     `Submitted: ${new Date().toLocaleString()}`
   );
-
-  // Open mailto
   window.location.href = `mailto:advocateurology@pm.me?subject=${subject}&body=${body}`;
+}
 
-  // Show success state
+function showSubmissionSuccess() {
   document.getElementById('formView').style.display = 'none';
   document.getElementById('successView').style.display = 'block';
 }
